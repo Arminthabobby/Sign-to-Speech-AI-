@@ -1,0 +1,187 @@
+import cv2
+import mediapipe as mp
+import time
+import numpy as np
+import uuid
+import os
+from gtts import gTTS
+from playsound import playsound
+import google.generativeai as genai
+
+genai.configure(api_key="AIzaSyCbDBGX5WYdGCHX10D3NMvgbkqHoRID_hg")  # Replace with your actual Gemini API key
+model = genai.GenerativeModel("models/gemini-1.5-pro-latest")
+
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
+
+gesture_map = {
+    "hello": "Hello", 
+    "thank_you": "Thank you", 
+    "sorry": "Sorry",
+    "goodbye": "Goodbye", 
+    "yes": "Yes",  
+    "no": "No", 
+    "please": "Please", 
+    "more": "More",
+    "help": "Help",  
+    "eat": "Eat",  
+    "friend": "Friend", 
+    "love": "Love",  
+    "happy": "Happy",  
+    "sad": "Sad",  
+    "good_morning": "Good morning", 
+    "good_night": "Good night", 
+    "how_are_you": "How are you?",
+    "good": "Good", 
+    "bad": "Bad"  
+}
+
+# Function to calculate the distance between two points
+def distance(point1, point2):
+    return ((point1.x - point2.x)**2 + (point1.y - point2.y)**2)**0.5
+
+# Recognizing specific ASL gestures based on hand landmarks
+def recognize_sign(landmarks):
+    # Get key landmarks
+    thumb_tip = landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+    index_tip = landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+    middle_tip = landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+    ring_tip = landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
+    pinky_tip = landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
+    wrist = landmarks.landmark[mp_hands.HandLandmark.WRIST]
+    
+    # Debugging info - print landmarks to help diagnose
+    print(f"Thumb: {thumb_tip}, Index: {index_tip}, Middle: {middle_tip}, Ring: {ring_tip}, Pinky: {pinky_tip}")
+    
+    # Detecting specific ASL gestures:
+    
+    # ASL "Hello" - Wave hand at forehead
+    if index_tip.y < thumb_tip.y and middle_tip.y < thumb_tip.y and ring_tip.y < thumb_tip.y and pinky_tip.y < thumb_tip.y:
+        return "hello"
+    
+    # ASL "Thank You" - Fingers touch chin and move out
+    if (index_tip.y < wrist.y and middle_tip.y < wrist.y and ring_tip.y < wrist.y and pinky_tip.y < wrist.y):
+        return "thank_you"
+    
+    # ASL "Sorry" - Circular motion on chest with a fist
+    if (thumb_tip.y > wrist.y and index_tip.y > wrist.y and middle_tip.y > wrist.y and ring_tip.y > wrist.y and pinky_tip.y > wrist.y):
+        return "sorry"
+    
+    # ASL "Goodbye" - Waving hand motion
+    if (index_tip.y < wrist.y and middle_tip.y < wrist.y and ring_tip.y < wrist.y and pinky_tip.y < wrist.y):
+        return "goodbye"
+    
+    # ASL "Yes" - Fist nodding up and down
+    if distance(thumb_tip, index_tip) < 0.05:
+        return "yes"
+    
+    # ASL "No" - Thumb, index, and middle finger pinching together
+    if distance(thumb_tip, index_tip) < 0.05 and distance(index_tip, middle_tip) < 0.05:
+        return "no"
+    
+    # ASL "Please" - Open hand moves in a circular motion on chest
+    if distance(index_tip, thumb_tip) > 0.05:
+        return "please"
+    
+    # ASL "More" - Both hands fingers come together
+    if distance(index_tip, thumb_tip) < 0.05:
+        return "more"
+    
+    # ASL "Help" - One fist on top of the other hand
+    if distance(wrist, index_tip) < 0.1:
+        return "help"
+    
+    # ASL "Eat" - One hand tap at mouth
+    if distance(index_tip, thumb_tip) < 0.05:
+        return "eat"
+    
+    # ASL "Friend" - Hooked finger gesture
+    if distance(thumb_tip, index_tip) < 0.05:
+        return "friend"
+
+    return "unknown"
+
+def generate_response(prompt):
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Sorry, I couldn't generate a response. ({e})"
+
+# Text-to-Speech using gTTS
+def speak(text):
+    try:
+        tts = gTTS(text)
+        filename = f"temp_{uuid.uuid4().hex}.mp3"
+        tts.save(filename)
+        playsound(filename)
+        os.remove(filename)
+    except Exception as e:
+        print(f"Error in TTS: {e}")
+
+def main():
+    # Start video capture
+    cap = cv2.VideoCapture(0)
+    last_detection_time = 0
+    cooldown = 2  # seconds between detections to avoid spam
+    detected_gesture = "None"
+    
+    while cap.isOpened():
+        success, image = cap.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            continue
+
+        # Flip and convert the image to RGB
+        image = cv2.flip(image, 1)
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # Process with MediaPipe
+        result = hands.process(rgb_image)
+
+        current_time = time.time()
+        
+        # Always show landmarks when hand is detected
+        if result.multi_hand_landmarks:
+            for hand_landmarks in result.multi_hand_landmarks:
+                mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                
+                # Only process gestures after cooldown
+                if (current_time - last_detection_time) > cooldown:
+                    gesture = recognize_sign(hand_landmarks)
+                    detected_gesture = gesture
+                    
+                    if gesture in gesture_map:
+                        text_prompt = gesture_map[gesture]
+                        print(f"Detected gesture: {gesture} → '{text_prompt}'")
+                        
+                        response = generate_response(text_prompt)
+                        print(f"Response: {response}")
+                        speak(response)
+                        
+                        last_detection_time = current_time
+
+        # Display status and detected gesture
+        status = f"Sign2Speech AI {'- Ready -' if (current_time - last_detection_time) > cooldown else '- Cooldown -'}"
+        cv2.putText(image, status, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(image, f"Detected: {detected_gesture}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+        
+        # Display legend
+        y_pos = image.shape[0] - 130
+        cv2.putText(image, "Gesture Guide:", (10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        cv2.putText(image, "Wave hand = Hello", (30, y_pos + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(image, "Fingers to chin = Thank you", (30, y_pos + 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(image, "Circle fist on chest = Sorry", (30, y_pos + 75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(image, "Wave hand = Goodbye", (30, y_pos + 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(image, "Open hand = Please", (30, y_pos + 125), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+        cv2.imshow('Sign2Speech AI', image)
+        if cv2.waitKey(5) & 0xFF == 27:  # Press ESC to exit
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
