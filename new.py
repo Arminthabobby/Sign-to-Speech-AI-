@@ -8,25 +8,13 @@ from gtts import gTTS
 from playsound import playsound
 import google.generativeai as genai
 
-
-# =========================
-# Gemini Setup
-# =========================
-genai.configure(api_key="AIzaSyCbDBGX5WYdGCHX10D3NMvgbkqHoRID_hg")  # replace safely later
-
+genai.configure(api_key="AIzaSyCbDBGX5WYdGCHX10D3NMvgbkqHoRID_hg")  
 model = genai.GenerativeModel("models/gemini-1.5-flash")
 
-# =========================
-# MediaPipe Setup
-# =========================
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 hands = mp_hands.Hands(max_num_hands=2, min_detection_confidence=0.7)
 
-
-# =========================
-# ASL Gesture Mappings
-# =========================
 gesture_map = {
     "hello": "Hello",
     "thank_you": "Thank you",
@@ -49,17 +37,9 @@ gesture_map = {
     "bad": "Bad"
 }
 
-
-# =========================
-# Utility Functions
-# =========================
 def distance(p1, p2):
     return ((p1.x - p2.x)**2 + (p1.y - p2.y)**2)**0.5
 
-
-# =========================
-# Rule-based Gesture Recognition
-# =========================
 def recognize_sign(landmarks):
     thumb_tip = landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
     index_tip = landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
@@ -85,17 +65,9 @@ def recognize_sign(landmarks):
 
     return "unknown"
 
-
-# =========================
-# Predefined Meaning
-# =========================
 def generate_response(gesture):
     return gesture_map.get(gesture, "Gesture not recognized")
 
-
-# =========================
-# ✅ Gemini Humanisation (NEW)
-# =========================
 def humanize_with_gemini(text):
     try:
         prompt = f"""
@@ -112,10 +84,6 @@ def humanize_with_gemini(text):
         print(f"Gemini Error: {e}")
         return text  # fallback
 
-
-# =========================
-# Text-to-Speech
-# =========================
 def speak(text):
     try:
         tts = gTTS(text)
@@ -126,10 +94,6 @@ def speak(text):
     except Exception as e:
         print(f"TTS error: {e}")
 
-
-# =========================
-# Main Loop
-# =========================
 def main():
     cap = cv2.VideoCapture(0)
     last_detection_time = 0
@@ -155,10 +119,7 @@ def main():
                     if gesture != "unknown":
                         detected_gesture = gesture
 
-                        # Step 1: fixed meaning
                         base_text = generate_response(gesture)
-
-                        # Step 2: Gemini humanisation
                         final_text = humanize_with_gemini(base_text)
 
                         print(f"Gesture: {gesture}")
@@ -183,3 +144,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
