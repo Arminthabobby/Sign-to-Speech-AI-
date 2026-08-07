@@ -8,7 +8,7 @@ from gtts import gTTS
 from playsound import playsound
 import google.generativeai as genai
 
-genai.configure(api_key="AIzaSyCbDBGX5WYdGCHX10D3NMvgbkqHoRID_hg")  
+genai.configure(api_key="your_api_key")  
 model = genai.GenerativeModel("models/gemini-1.5-flash")
 
 mp_hands = mp.solutions.hands
